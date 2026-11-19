@@ -61,23 +61,24 @@
 <script>
 // Seven full-quality renders played as one message. Each part hands off to the next at an
 // audio-aligned cut point (seconds into that part); the last part plays to its end.
-const ENDS = [12.15, 13.53, 12.4, 12.4, 12.4, 11.98, null];
+const ENDS   = [12.15, 13.53, 12.4, 12.4, 12.4, 11.98, null];
+const STARTS = [0, 0, 0, 0, 0, 0, 0.185];
 const vids = [...document.querySelectorAll('#stage video')], btn = document.getElementById('play'), bar = document.getElementById('bar');
-const lens = ENDS.map(e => e || 10.06), total = lens.reduce((a, b) => a + b, 0);
+const lens = ENDS.map((e, n) => (e || 12.04) - STARTS[n]), total = lens.reduce((a, b) => a + b, 0);
 let i = 0, primed = false;
 const cur = () => vids[i];
 function show(k){ vids.forEach((v, n) => v.style.visibility = n === k ? 'visible' : 'hidden'); }
 function preloadNext(){ const n = vids[i + 1]; if (n && n.preload !== 'auto') { n.preload = 'auto'; n.load(); } }
 function tick(){
   const v = cur(), done = lens.slice(0, i).reduce((a, b) => a + b, 0);
-  bar.style.width = Math.min(100, (done + v.currentTime) / total * 100) + '%';
+  bar.style.width = Math.min(100, (done + v.currentTime - STARTS[i]) / total * 100) + '%';
   if (ENDS[i] !== null && v.currentTime >= ENDS[i]) { next(); return; }
   if (!v.paused) requestAnimationFrame(tick);
 }
 function next(){
   cur().pause();
   if (i >= vids.length - 1) { btn.hidden = false; bar.style.width = '100%'; return; }
-  i++; const v = cur(); v.currentTime = 0; v.muted = false; show(i); preloadNext();
+  i++; const v = cur(); v.currentTime = STARTS[i]; v.muted = false; show(i); preloadNext();
   const p = v.play(); if (p) p.catch(() => { btn.hidden = false; });
   requestAnimationFrame(tick);
 }
@@ -90,7 +91,7 @@ function start(){
   if (!primed) {
     primed = true;
     vids.forEach((v, n) => { if (n === i) return; v.muted = true; const q = v.play();
-      const reset = () => { if (vids[i] !== v) { v.pause(); v.currentTime = 0; } v.muted = false; };
+      const reset = () => { if (vids[i] !== v) { v.pause(); v.currentTime = STARTS[n]; } v.muted = false; };
       if (q) q.then(reset).catch(reset); else reset(); });
   }
 }
