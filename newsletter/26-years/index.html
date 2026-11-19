@@ -23,7 +23,7 @@
   .stage{position:relative;width:min(420px,100%);aspect-ratio:834/1112;margin-top:22px;border-radius:22px;overflow:hidden;background:#000;
          box-shadow:0 0 0 1px rgba(255,106,69,.45),0 0 50px rgba(224,86,58,.3),0 30px 60px rgba(0,0,0,.7)}
   .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
-  #v2{visibility:hidden}
+  .stage video+video{visibility:hidden}
   .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,0) 50%,rgba(0,0,0,.55));border:0;cursor:pointer;padding:0}
   .play i{width:78px;height:78px;border-radius:50%;background:rgba(5,5,5,.45);border:1.5px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
   .play i:after{content:"";border-left:22px solid #fff;border-top:13px solid transparent;border-bottom:13px solid transparent;margin-left:6px}
@@ -43,8 +43,13 @@
   <h1>26 Years. <span>The Human Element.</span></h1>
 
   <div class="stage" id="stage">
-    <video id="v1" src="part1.mp4" poster="poster.jpg" playsinline webkit-playsinline preload="auto"></video>
-    <video id="v2" src="part2.mp4" playsinline webkit-playsinline preload="auto"></video>
+    <video src="part1.mp4" poster="poster.jpg" playsinline webkit-playsinline preload="auto"></video>
+    <video src="part2.mp4" playsinline webkit-playsinline preload="auto"></video>
+    <video src="part3.mp4" playsinline webkit-playsinline preload="metadata"></video>
+    <video src="part4.mp4" playsinline webkit-playsinline preload="metadata"></video>
+    <video src="part5.mp4" playsinline webkit-playsinline preload="metadata"></video>
+    <video src="part6.mp4" playsinline webkit-playsinline preload="metadata"></video>
+    <video src="part7.mp4" playsinline webkit-playsinline preload="metadata"></video>
     <button class="play" id="play" aria-label="Play the 26-year message"><i></i></button>
     <div class="bar" id="bar"></div>
   </div>
@@ -54,41 +59,45 @@
   <footer>Elemental Studios &middot; 1662 Savannah Hwy, Ste 340 &middot; Charleston, SC</footer>
 
 <script>
-// Two full-quality renders played as one: part 1 hands off to part 2 at 12.15s (audio-aligned overlap).
-const CUT = 12.15, v1 = document.getElementById('v1'), v2 = document.getElementById('v2'),
-      btn = document.getElementById('play'), bar = document.getElementById('bar');
-let cur = v1, primed = false, total = CUT + 14.05;
-v2.addEventListener('loadedmetadata', () => { total = CUT + v2.duration; });
+// Seven full-quality renders played as one message. Each part hands off to the next at an
+// audio-aligned cut point (seconds into that part); the last part plays to its end.
+const ENDS = [12.15, 13.53, 12.4, 12.4, 12.4, 11.98, null];
+const vids = [...document.querySelectorAll('#stage video')], btn = document.getElementById('play'), bar = document.getElementById('bar');
+const lens = ENDS.map(e => e || 10.06), total = lens.reduce((a, b) => a + b, 0);
+let i = 0, primed = false;
+const cur = () => vids[i];
+function show(k){ vids.forEach((v, n) => v.style.visibility = n === k ? 'visible' : 'hidden'); }
+function preloadNext(){ const n = vids[i + 1]; if (n && n.preload !== 'auto') { n.preload = 'auto'; n.load(); } }
 function tick(){
-  const t = cur === v1 ? v1.currentTime : CUT + v2.currentTime;
-  bar.style.width = Math.min(100, t / total * 100) + '%';
-  if (cur === v1 && v1.currentTime >= CUT) swap();
-  if (!cur.paused) requestAnimationFrame(tick);
+  const v = cur(), done = lens.slice(0, i).reduce((a, b) => a + b, 0);
+  bar.style.width = Math.min(100, (done + v.currentTime) / total * 100) + '%';
+  if (ENDS[i] !== null && v.currentTime >= ENDS[i]) { next(); return; }
+  if (!v.paused) requestAnimationFrame(tick);
 }
-function swap(){
-  v1.pause(); v2.currentTime = 0; v2.muted = false; v2.style.visibility = 'visible'; v1.style.visibility = 'hidden';
-  cur = v2; const p = v2.play(); if (p) p.catch(() => { btn.hidden = false; }); requestAnimationFrame(tick);
+function next(){
+  cur().pause();
+  if (i >= vids.length - 1) { btn.hidden = false; bar.style.width = '100%'; return; }
+  i++; const v = cur(); v.currentTime = 0; v.muted = false; show(i); preloadNext();
+  const p = v.play(); if (p) p.catch(() => { btn.hidden = false; });
+  requestAnimationFrame(tick);
 }
 function start(){
   btn.hidden = true;
-  if (cur.ended || (cur === v2 && v2.currentTime >= v2.duration - 0.05)) { // replay
-    cur = v1; v1.currentTime = 0; v1.style.visibility = 'visible'; v2.style.visibility = 'hidden';
-  }
-  // Start playback immediately, inside the tap (required by iOS / Safari).
-  const p = cur.play(); if (p) p.catch(() => { btn.hidden = false; });
-  requestAnimationFrame(tick);
-  // Unlock part 2 in the same tap without waiting on it, so it can play later on iOS.
-  if (!primed && cur === v1) {
-    primed = true; v2.muted = true;
-    const q = v2.play();
-    const reset = () => { if (cur !== v2) { v2.pause(); v2.currentTime = 0; } v2.muted = false; };
-    if (q) q.then(reset).catch(reset); else reset();
+  if (i === vids.length - 1 && (cur().ended || cur().currentTime >= cur().duration - 0.05)) { i = 0; vids[0].currentTime = 0; show(0); }
+  const p = cur().play(); if (p) p.catch(() => { btn.hidden = false; });
+  requestAnimationFrame(tick); preloadNext();
+  // iOS/Safari: unlock the later parts inside this same tap, without waiting on them.
+  if (!primed) {
+    primed = true;
+    vids.forEach((v, n) => { if (n === i) return; v.muted = true; const q = v.play();
+      const reset = () => { if (vids[i] !== v) { v.pause(); v.currentTime = 0; } v.muted = false; };
+      if (q) q.then(reset).catch(reset); else reset(); });
   }
 }
 btn.addEventListener('click', start);
-document.getElementById('stage').addEventListener('click', e => { if (e.target !== btn && !btn.contains(e.target) && !cur.paused) { cur.pause(); btn.hidden = false; } });
-v1.addEventListener('ended', () => { if (cur === v1) swap(); });
-v2.addEventListener('ended', () => { btn.hidden = false; bar.style.width = '100%'; });
+document.getElementById('stage').addEventListener('click', e => { if (e.target !== btn && !btn.contains(e.target) && !cur().paused) { cur().pause(); btn.hidden = false; } });
+vids.forEach((v, n) => v.addEventListener('ended', () => { if (n === i) next(); }));
+show(0);
 </script>
 </body>
 </html>
