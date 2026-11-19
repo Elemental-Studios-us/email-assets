@@ -98,6 +98,12 @@ function start(){
 btn.addEventListener('click', start);
 document.getElementById('stage').addEventListener('click', e => { if (e.target !== btn && !btn.contains(e.target) && !cur().paused) { cur().pause(); btn.hidden = false; } });
 vids.forEach((v, n) => v.addEventListener('ended', () => { if (n === i) next(); }));
+// Backup cut triggers in case animation frames are throttled: per-frame callback where supported, plus timeupdate.
+const atEnd = n => n === i && ENDS[n] !== null && vids[n].currentTime >= ENDS[n];
+vids.forEach((v, n) => {
+  v.addEventListener('timeupdate', () => { if (atEnd(n)) next(); });
+  if (v.requestVideoFrameCallback) { const f = () => { if (atEnd(n)) next(); v.requestVideoFrameCallback(f); }; v.requestVideoFrameCallback(f); }
+});
 show(0);
 </script>
 </body>
