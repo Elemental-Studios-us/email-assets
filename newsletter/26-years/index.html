@@ -43,8 +43,8 @@
   <h1>26 Years. <span>The Human Element.</span></h1>
 
   <div class="stage" id="stage">
-    <video id="v1" src="part1.mp4" poster="poster.jpg" playsinline preload="auto"></video>
-    <video id="v2" src="part2.mp4" playsinline preload="auto"></video>
+    <video id="v1" src="part1.mp4" poster="poster.jpg" playsinline webkit-playsinline preload="auto"></video>
+    <video id="v2" src="part2.mp4" playsinline webkit-playsinline preload="auto"></video>
     <button class="play" id="play" aria-label="Play the 26-year message"><i></i></button>
     <div class="bar" id="bar"></div>
   </div>
@@ -66,18 +66,24 @@ function tick(){
   if (!cur.paused) requestAnimationFrame(tick);
 }
 function swap(){
-  v1.pause(); v2.currentTime = 0; v2.style.visibility = 'visible'; v1.style.visibility = 'hidden';
-  cur = v2; v2.play(); requestAnimationFrame(tick);
+  v1.pause(); v2.currentTime = 0; v2.muted = false; v2.style.visibility = 'visible'; v1.style.visibility = 'hidden';
+  cur = v2; const p = v2.play(); if (p) p.catch(() => { btn.hidden = false; }); requestAnimationFrame(tick);
 }
-async function start(){
-  if (!primed) { // unlock part 2 inside the user's tap (iOS)
-    primed = true; v2.muted = true; try { await v2.play(); } catch(e) {} v2.pause(); v2.currentTime = 0; v2.muted = false;
-  }
+function start(){
   btn.hidden = true;
   if (cur.ended || (cur === v2 && v2.currentTime >= v2.duration - 0.05)) { // replay
     cur = v1; v1.currentTime = 0; v1.style.visibility = 'visible'; v2.style.visibility = 'hidden';
   }
-  cur.play(); requestAnimationFrame(tick);
+  // Start playback immediately, inside the tap (required by iOS / Safari).
+  const p = cur.play(); if (p) p.catch(() => { btn.hidden = false; });
+  requestAnimationFrame(tick);
+  // Unlock part 2 in the same tap without waiting on it, so it can play later on iOS.
+  if (!primed && cur === v1) {
+    primed = true; v2.muted = true;
+    const q = v2.play();
+    const reset = () => { if (cur !== v2) { v2.pause(); v2.currentTime = 0; } v2.muted = false; };
+    if (q) q.then(reset).catch(reset); else reset();
+  }
 }
 btn.addEventListener('click', start);
 document.getElementById('stage').addEventListener('click', e => { if (e.target !== btn && !btn.contains(e.target) && !cur.paused) { cur.pause(); btn.hidden = false; } });
