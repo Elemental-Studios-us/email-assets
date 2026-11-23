@@ -22,13 +22,13 @@
   h1 span{color:var(--fire)}
   .stage{position:relative;width:min(420px,100%);aspect-ratio:834/1112;margin-top:22px;border-radius:22px;overflow:hidden;background:#000;
          box-shadow:0 0 0 1px rgba(255,106,69,.45),0 0 50px rgba(224,86,58,.3),0 30px 60px rgba(0,0,0,.7)}
-  .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
-  .stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
-  .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,0) 50%,rgba(0,0,0,.55));border:0;cursor:pointer;padding:0}
-  .play i{width:78px;height:78px;border-radius:50%;background:rgba(5,5,5,.45);border:1.5px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-  .play i:after{content:"";border-left:22px solid #fff;border-top:13px solid transparent;border-bottom:13px solid transparent;margin-left:6px}
-  .play[hidden]{display:none}
-  .bar{position:absolute;left:0;bottom:0;height:3px;background:var(--fire);box-shadow:0 0 10px var(--glow);width:0}
+  .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:block}
+
+
+
+
+
+
   .quote{margin-top:26px;font-size:clamp(18px,4.6vw,24px);text-align:center;max-width:460px}
   .quote span{color:var(--fire)}
   .cta{margin-top:22px;display:inline-block;padding:14px 24px;border:1px solid rgba(255,106,69,.6);border-radius:999px;color:var(--ink);text-decoration:none;
@@ -42,81 +42,15 @@
   <div class="eyebrow">26-year message &nbsp;/&nbsp; From the studio floor</div>
   <h1>26 Years. <span>The Human Element.</span></h1>
 
-  <div class="stage" id="stage">
-    <video id="v" src="part1.mp4" poster="cover3.jpg" playsinline webkit-playsinline preload="auto"></video>
-    <canvas id="cov"></canvas>
-    <button class="play" id="play" aria-label="Play the 26-year message"><i></i></button>
-    <div class="bar" id="bar"></div>
+  <div class="stage">
+    <video src="message.mp4" poster="cover3.jpg" controls playsinline webkit-playsinline preload="metadata"
+           aria-label="Bruce Quiroz: 26-year message from Elemental Studios">
+      <a href="message.mp4">Watch the 26-year message</a>
+    </video>
   </div>
 
   <p class="quote">"A camera, a computer <span>and a dream."</span></p>
   <a class="cta" href="https://www.elementalstudios.us/">Visit Elemental Studios &rarr;</a>
   <footer>Elemental Studios &middot; 1662 Savannah Hwy, Ste 340 &middot; Charleston, SC</footer>
-
-<script>
-// One video element plays seven full-quality renders in sequence (audio-aligned cut points).
-// Only one decoder is ever active; the next part is prefetched in the background.
-const PARTS = [
-  { src: 'part1.mp4',  start: 0,     end: 12.15 },
-  { src: 'part2.mp4',  start: 0,     end: 13.53 },
-  { src: 'part3.mp4',  start: 0,     end: 12.4  },
-  { src: 'part4.mp4',  start: 0,     end: 12.4  },
-  { src: 'part5.mp4',  start: 0,     end: 12.4  },
-  { src: 'part6.mp4',  start: 0,     end: 11.98 },
-  { src: 'part7b.mp4', start: 0.185, end: null, len: 11.86 }
-];
-const v = document.getElementById('v'), cov = document.getElementById('cov'), btn = document.getElementById('play'), bar = document.getElementById('bar');
-const lens = PARTS.map(p => p.len || (p.end - p.start)), total = lens.reduce((a, b) => a + b, 0);
-const blobs = {};
-let i = 0, switching = false, started = false;
-
-function prefetch(k){
-  const p = PARTS[k]; if (!p || blobs[k]) return;
-  blobs[k] = 'pending';
-  fetch(p.src).then(r => r.ok ? r.blob() : Promise.reject()).then(b => { blobs[k] = URL.createObjectURL(b); }).catch(() => { blobs[k] = null; });
-}
-function progress(){
-  const done = lens.slice(0, i).reduce((a, b) => a + b, 0);
-  bar.style.width = Math.min(100, (done + Math.max(0, v.currentTime - PARTS[i].start)) / total * 100) + '%';
-}
-function check(){
-  if (switching || v.paused) return;
-  progress();
-  const p = PARTS[i];
-  if (p.end !== null && v.currentTime >= p.end) next();
-}
-function loop(){ check(); if (!v.paused) requestAnimationFrame(loop); }
-function next(){
-  if (i >= PARTS.length - 1) { finish(); return; }
-  switching = true;
-  // Freeze the current frame on screen while the next part loads.
-  try { cov.width = v.videoWidth; cov.height = v.videoHeight; cov.getContext('2d').drawImage(v, 0, 0); cov.style.display = 'block'; } catch (e) {}
-  i++;
-  const p = PARTS[i], url = (blobs[i] && blobs[i] !== 'pending') ? blobs[i] : p.src;
-  v.pause(); v.src = url;
-  v.addEventListener('loadedmetadata', () => {
-    v.currentTime = p.start;
-    const go = () => { const q = v.play(); if (q) q.catch(() => { btn.hidden = false; }); };
-    if (p.start > 0) v.addEventListener('seeked', go, { once: true }); else go();
-  }, { once: true });
-  v.addEventListener('playing', () => { switching = false; cov.style.display = 'none'; prefetch(i + 1); requestAnimationFrame(loop); }, { once: true });
-}
-function finish(){ v.pause(); btn.hidden = false; bar.style.width = '100%'; }
-function start(){
-  btn.hidden = true;
-  if (i === PARTS.length - 1 && (v.ended || v.currentTime >= v.duration - 0.05)) { // replay from the top
-    i = 0; v.src = blobs[0] && blobs[0] !== 'pending' ? blobs[0] : PARTS[0].src; v.currentTime = 0;
-  }
-  const q = v.play(); if (q) q.catch(() => { btn.hidden = false; });
-  if (!started) { started = true; prefetch(1); }
-  requestAnimationFrame(loop);
-}
-btn.addEventListener('click', start);
-document.getElementById('stage').addEventListener('click', e => { if (e.target !== btn && !btn.contains(e.target) && !v.paused && !switching) { v.pause(); btn.hidden = false; } });
-v.addEventListener('timeupdate', check);
-if (v.requestVideoFrameCallback) { const f = () => { check(); v.requestVideoFrameCallback(f); }; v.requestVideoFrameCallback(f); }
-v.addEventListener('ended', () => { if (!switching) next(); });
-v.addEventListener('playing', () => { requestAnimationFrame(loop); });
-</script>
 </body>
 </html>
