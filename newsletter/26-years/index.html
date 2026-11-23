@@ -8,7 +8,7 @@
 <meta name="robots" content="noindex">
 <meta property="og:title" content="26 Years · The Human Element">
 <meta property="og:description" content="A message from the studio floor.">
-<meta property="og:image" content="https://elemental-studios-us.github.io/email-assets/newsletter/26-years/poster.jpg">
+<meta property="og:image" content="https://elemental-studios-us.github.io/email-assets/newsletter/26-years/cover2.jpg">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#050505;--ink:#f3ede6;--mute:#8d817a;--fire:#e0563a;--glow:#ff6a45}
@@ -23,7 +23,7 @@
   .stage{position:relative;width:min(420px,100%);aspect-ratio:834/1112;margin-top:22px;border-radius:22px;overflow:hidden;background:#000;
          box-shadow:0 0 0 1px rgba(255,106,69,.45),0 0 50px rgba(224,86,58,.3),0 30px 60px rgba(0,0,0,.7)}
   .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
-  .stage video+video{visibility:hidden}
+  .stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
   .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,0) 50%,rgba(0,0,0,.55));border:0;cursor:pointer;padding:0}
   .play i{width:78px;height:78px;border-radius:50%;background:rgba(5,5,5,.45);border:1.5px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
   .play i:after{content:"";border-left:22px solid #fff;border-top:13px solid transparent;border-bottom:13px solid transparent;margin-left:6px}
@@ -43,13 +43,8 @@
   <h1>26 Years. <span>The Human Element.</span></h1>
 
   <div class="stage" id="stage">
-    <video src="part1.mp4" poster="poster.jpg" playsinline webkit-playsinline preload="auto"></video>
-    <video src="part2.mp4" playsinline webkit-playsinline preload="auto"></video>
-    <video src="part3.mp4" playsinline webkit-playsinline preload="metadata"></video>
-    <video src="part4.mp4" playsinline webkit-playsinline preload="metadata"></video>
-    <video src="part5.mp4" playsinline webkit-playsinline preload="metadata"></video>
-    <video src="part6.mp4" playsinline webkit-playsinline preload="metadata"></video>
-    <video src="part7b.mp4" playsinline webkit-playsinline preload="metadata"></video>
+    <video id="v" src="part1.mp4" poster="cover2.jpg" playsinline webkit-playsinline preload="auto"></video>
+    <canvas id="cov"></canvas>
     <button class="play" id="play" aria-label="Play the 26-year message"><i></i></button>
     <div class="bar" id="bar"></div>
   </div>
@@ -59,52 +54,69 @@
   <footer>Elemental Studios &middot; 1662 Savannah Hwy, Ste 340 &middot; Charleston, SC</footer>
 
 <script>
-// Seven full-quality renders played as one message. Each part hands off to the next at an
-// audio-aligned cut point (seconds into that part); the last part plays to its end.
-const ENDS   = [12.15, 13.53, 12.4, 12.4, 12.4, 11.98, null];
-const STARTS = [0, 0, 0, 0, 0, 0, 0.185];
-const vids = [...document.querySelectorAll('#stage video')], btn = document.getElementById('play'), bar = document.getElementById('bar');
-const lens = ENDS.map((e, n) => (e || 12.04) - STARTS[n]), total = lens.reduce((a, b) => a + b, 0);
-let i = 0, primed = false;
-const cur = () => vids[i];
-function show(k){ vids.forEach((v, n) => v.style.visibility = n === k ? 'visible' : 'hidden'); }
-function preloadNext(){ const n = vids[i + 1]; if (n && n.preload !== 'auto') { n.preload = 'auto'; n.load(); } }
-function tick(){
-  const v = cur(), done = lens.slice(0, i).reduce((a, b) => a + b, 0);
-  bar.style.width = Math.min(100, (done + v.currentTime - STARTS[i]) / total * 100) + '%';
-  if (ENDS[i] !== null && v.currentTime >= ENDS[i]) { next(); return; }
-  if (!v.paused) requestAnimationFrame(tick);
+// One video element plays seven full-quality renders in sequence (audio-aligned cut points).
+// Only one decoder is ever active; the next part is prefetched in the background.
+const PARTS = [
+  { src: 'part1.mp4',  start: 0,     end: 12.15 },
+  { src: 'part2.mp4',  start: 0,     end: 13.53 },
+  { src: 'part3.mp4',  start: 0,     end: 12.4  },
+  { src: 'part4.mp4',  start: 0,     end: 12.4  },
+  { src: 'part5.mp4',  start: 0,     end: 12.4  },
+  { src: 'part6.mp4',  start: 0,     end: 11.98 },
+  { src: 'part7b.mp4', start: 0.185, end: null, len: 11.86 }
+];
+const v = document.getElementById('v'), cov = document.getElementById('cov'), btn = document.getElementById('play'), bar = document.getElementById('bar');
+const lens = PARTS.map(p => p.len || (p.end - p.start)), total = lens.reduce((a, b) => a + b, 0);
+const blobs = {};
+let i = 0, switching = false, started = false;
+
+function prefetch(k){
+  const p = PARTS[k]; if (!p || blobs[k]) return;
+  blobs[k] = 'pending';
+  fetch(p.src).then(r => r.ok ? r.blob() : Promise.reject()).then(b => { blobs[k] = URL.createObjectURL(b); }).catch(() => { blobs[k] = null; });
 }
+function progress(){
+  const done = lens.slice(0, i).reduce((a, b) => a + b, 0);
+  bar.style.width = Math.min(100, (done + Math.max(0, v.currentTime - PARTS[i].start)) / total * 100) + '%';
+}
+function check(){
+  if (switching || v.paused) return;
+  progress();
+  const p = PARTS[i];
+  if (p.end !== null && v.currentTime >= p.end) next();
+}
+function loop(){ check(); if (!v.paused) requestAnimationFrame(loop); }
 function next(){
-  cur().pause();
-  if (i >= vids.length - 1) { btn.hidden = false; bar.style.width = '100%'; return; }
-  i++; const v = cur(); v.currentTime = STARTS[i]; v.muted = false; show(i); preloadNext();
-  const p = v.play(); if (p) p.catch(() => { btn.hidden = false; });
-  requestAnimationFrame(tick);
+  if (i >= PARTS.length - 1) { finish(); return; }
+  switching = true;
+  // Freeze the current frame on screen while the next part loads.
+  try { cov.width = v.videoWidth; cov.height = v.videoHeight; cov.getContext('2d').drawImage(v, 0, 0); cov.style.display = 'block'; } catch (e) {}
+  i++;
+  const p = PARTS[i], url = (blobs[i] && blobs[i] !== 'pending') ? blobs[i] : p.src;
+  v.pause(); v.src = url;
+  v.addEventListener('loadedmetadata', () => {
+    v.currentTime = p.start;
+    const go = () => { const q = v.play(); if (q) q.catch(() => { btn.hidden = false; }); };
+    if (p.start > 0) v.addEventListener('seeked', go, { once: true }); else go();
+  }, { once: true });
+  v.addEventListener('playing', () => { switching = false; cov.style.display = 'none'; prefetch(i + 1); requestAnimationFrame(loop); }, { once: true });
 }
+function finish(){ v.pause(); btn.hidden = false; bar.style.width = '100%'; }
 function start(){
   btn.hidden = true;
-  if (i === vids.length - 1 && (cur().ended || cur().currentTime >= cur().duration - 0.05)) { i = 0; vids[0].currentTime = 0; show(0); }
-  const p = cur().play(); if (p) p.catch(() => { btn.hidden = false; });
-  requestAnimationFrame(tick); preloadNext();
-  // iOS/Safari: unlock the later parts inside this same tap, without waiting on them.
-  if (!primed) {
-    primed = true;
-    vids.forEach((v, n) => { if (n === i) return; v.muted = true; const q = v.play();
-      const reset = () => { if (vids[i] !== v) { v.pause(); v.currentTime = STARTS[n]; } v.muted = false; };
-      if (q) q.then(reset).catch(reset); else reset(); });
+  if (i === PARTS.length - 1 && (v.ended || v.currentTime >= v.duration - 0.05)) { // replay from the top
+    i = 0; v.src = blobs[0] && blobs[0] !== 'pending' ? blobs[0] : PARTS[0].src; v.currentTime = 0;
   }
+  const q = v.play(); if (q) q.catch(() => { btn.hidden = false; });
+  if (!started) { started = true; prefetch(1); }
+  requestAnimationFrame(loop);
 }
 btn.addEventListener('click', start);
-document.getElementById('stage').addEventListener('click', e => { if (e.target !== btn && !btn.contains(e.target) && !cur().paused) { cur().pause(); btn.hidden = false; } });
-vids.forEach((v, n) => v.addEventListener('ended', () => { if (n === i) next(); }));
-// Backup cut triggers in case animation frames are throttled: per-frame callback where supported, plus timeupdate.
-const atEnd = n => n === i && ENDS[n] !== null && vids[n].currentTime >= ENDS[n];
-vids.forEach((v, n) => {
-  v.addEventListener('timeupdate', () => { if (atEnd(n)) next(); });
-  if (v.requestVideoFrameCallback) { const f = () => { if (atEnd(n)) next(); v.requestVideoFrameCallback(f); }; v.requestVideoFrameCallback(f); }
-});
-show(0);
+document.getElementById('stage').addEventListener('click', e => { if (e.target !== btn && !btn.contains(e.target) && !v.paused && !switching) { v.pause(); btn.hidden = false; } });
+v.addEventListener('timeupdate', check);
+if (v.requestVideoFrameCallback) { const f = () => { check(); v.requestVideoFrameCallback(f); }; v.requestVideoFrameCallback(f); }
+v.addEventListener('ended', () => { if (!switching) next(); });
+v.addEventListener('playing', () => { requestAnimationFrame(loop); });
 </script>
 </body>
 </html>
